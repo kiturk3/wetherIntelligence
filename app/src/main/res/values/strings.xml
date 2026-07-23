@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Weather Intelligence</string>
+    <string name="home_title">Weather Intelligence</string>
+    <string name="search_title">Search City</string>
+    <string name="details_title">Weather Details</string>
+    <string name="settings_title">Settings</string>
+</resources>
