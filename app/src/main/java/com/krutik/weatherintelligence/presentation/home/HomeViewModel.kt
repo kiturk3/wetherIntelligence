@@ -3,6 +3,7 @@ package com.krutik.weatherintelligence.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krutik.weatherintelligence.core.common.Resource
+import com.krutik.weatherintelligence.core.location.LocationTracker
 import com.krutik.weatherintelligence.domain.model.CurrentWeather
 import com.krutik.weatherintelligence.domain.model.DailyForecast
 import com.krutik.weatherintelligence.domain.model.HourlyForecast
@@ -10,7 +11,6 @@ import com.krutik.weatherintelligence.domain.usecase.GetCurrentWeatherUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetDailyForecastUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetHourlyForecastUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,71 +22,59 @@ data class HomeUiState(
     val currentWeather: CurrentWeather? = null,
     val hourlyForecast: List<HourlyForecast> = emptyList(),
     val dailyForecast: List<DailyForecast> = emptyList(),
-    val error: String? = null,
-    val isOffline: Boolean = false
+    val error: String? = null
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val getCurrentWeatherUseCase: GetCurrentWeatherUseCase,
     private val getHourlyForecastUseCase: GetHourlyForecastUseCase,
-    private val getDailyForecastUseCase: GetDailyForecastUseCase
+    private val getDailyForecastUseCase: GetDailyForecastUseCase,
+    private val locationTracker: LocationTracker
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    private var weatherJob: Job? = null
-    private var hourlyJob: Job? = null
-    private var dailyJob: Job? = null
-
     init {
-        onEvent(HomeEvent.RefreshWeather(28.6139, 77.2090)) // Default location
+        onEvent(HomeEvent.FetchCurrentLocationWeather)
     }
 
     fun onEvent(event: HomeEvent) {
         when (event) {
             is HomeEvent.RefreshWeather -> fetchWeatherData(event.lat, event.lon, forceRefresh = true)
             is HomeEvent.SelectCity -> fetchWeatherData(event.lat, event.lon, forceRefresh = false)
+            is HomeEvent.FetchCurrentLocationWeather -> fetchCurrentLocationWeather()
         }
     }
 
-    fun fetchWeatherData(lat: Double, lon: Double, forceRefresh: Boolean = false) {
-        weatherJob?.cancel()
-        hourlyJob?.cancel()
-        dailyJob?.cancel()
+    private fun fetchCurrentLocationWeather() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val location = locationTracker.getCurrentLocation()
+            if (location != null) {
+                fetchWeatherData(location.latitude, location.longitude, forceRefresh = true)
+            } else {
+                // Fallback coordinates (New Delhi) if location permission not granted or GPS unavailable
+                fetchWeatherData(28.6139, 77.2090, forceRefresh = false)
+            }
+        }
+    }
 
-        weatherJob = viewModelScope.launch {
+    private fun fetchWeatherData(lat: Double, lon: Double, forceRefresh: Boolean = false) {
+        viewModelScope.launch {
             getCurrentWeatherUseCase(lat, lon, forceRefresh).collect { result ->
                 when (result) {
                     is Resource.Loading -> _uiState.value = _uiState.value.copy(isLoading = true)
                     is Resource.Success -> _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         currentWeather = result.data,
-                        error = null,
-                        isOffline = false
+                        error = null
                     )
                     is Resource.Error -> _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = if (_uiState.value.currentWeather == null) result.message else null,
-                        isOffline = true
+                        error = result.message
                     )
-                }
-            }
-        }
-
-        hourlyJob = viewModelScope.launch {
-            getHourlyForecastUseCase(lat, lon).collect { result ->
-                if (result is Resource.Success && result.data != null) {
-                    _uiState.value = _uiState.value.copy(hourlyForecast = result.data)
-                }
-            }
-        }
-
-        dailyJob = viewModelScope.launch {
-            getDailyForecastUseCase(lat, lon).collect { result ->
-                if (result is Resource.Success && result.data != null) {
-                    _uiState.value = _uiState.value.copy(dailyForecast = result.data)
                 }
             }
         }
