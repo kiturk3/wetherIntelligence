@@ -1,5 +1,6 @@
 package com.krutik.weatherintelligence.presentation.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,14 +10,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krutik.weatherintelligence.domain.model.DailyForecast
 import com.krutik.weatherintelligence.domain.model.HourlyForecast
@@ -70,12 +76,43 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold
                         )
                     )
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onNavigateToSearch) {
                             Icon(Icons.Rounded.Search, contentDescription = "Search", tint = Color.White)
                         }
                         IconButton(onClick = onNavigateToSettings) {
                             Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = Color.White)
+                        }
+                    }
+                }
+
+                // Offline Mode Banner
+                if (state.isOffline) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x33FFFFFF)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CloudOff,
+                                contentDescription = "Offline",
+                                tint = Color.White,
+                                modifier = Modifier.height(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Offline - Displaying cached data",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }
@@ -94,13 +131,13 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Hourly Forecast Horizontal List
-                    val mockHourly = if (state.hourlyForecast.isNotEmpty()) state.hourlyForecast else getMockHourlyForecasts()
-                    HourlyForecastRow(hourlyForecasts = mockHourly)
+                    val hourlyData = if (state.hourlyForecast.isNotEmpty()) state.hourlyForecast else getMockHourlyForecasts()
+                    HourlyForecastRow(hourlyForecasts = hourlyData)
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Temperature Trend Canvas Chart
-                    TemperatureChartCard(hourlyForecasts = mockHourly)
+                    TemperatureChartCard(hourlyForecasts = hourlyData)
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -110,8 +147,8 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // 7-Day Forecast
-                    val mockDaily = if (state.dailyForecast.isNotEmpty()) state.dailyForecast else getMockDailyForecasts()
-                    DailyForecastSection(dailyForecasts = mockDaily)
+                    val dailyData = if (state.dailyForecast.isNotEmpty()) state.dailyForecast else getMockDailyForecasts()
+                    DailyForecastSection(dailyForecasts = dailyData)
 
                     Spacer(modifier = Modifier.height(32.dp))
                 }
@@ -120,7 +157,7 @@ fun HomeScreen(
     }
 }
 
-// Fallback preview mocks when network is offline/empty
+// Fallback preview mocks when network is offline and DB is empty
 private fun getMockHourlyForecasts(): List<HourlyForecast> {
     val now = System.currentTimeMillis() / 1000
     return listOf(

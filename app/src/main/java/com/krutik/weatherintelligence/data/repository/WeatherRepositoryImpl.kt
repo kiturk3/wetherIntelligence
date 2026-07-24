@@ -1,5 +1,6 @@
 package com.krutik.weatherintelligence.data.repository
 
+import androidx.room.withTransaction
 import com.krutik.weatherintelligence.BuildConfig
 import com.krutik.weatherintelligence.core.common.Constants
 import com.krutik.weatherintelligence.core.common.Resource
@@ -15,6 +16,8 @@ import com.krutik.weatherintelligence.domain.model.DailyForecast
 import com.krutik.weatherintelligence.domain.model.HourlyForecast
 import com.krutik.weatherintelligence.domain.repository.WeatherRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -32,70 +35,92 @@ class WeatherRepositoryImpl @Inject constructor(
     override fun getCurrentWeather(lat: Double, lon: Double, forceRefresh: Boolean): Flow<Resource<CurrentWeather>> = flow {
         emit(Resource.Loading())
 
-        val metadata = cacheMetadataDao.getCacheMetadata("CURRENT_WEATHER")
+        val metadata = cacheMetadataDao.getCacheMetadata(Constants.KEY_CURRENT_WEATHER)
         val isCacheExpired = metadata == null || System.currentTimeMillis() > metadata.expiresAt
 
         if (forceRefresh || isCacheExpired) {
-            refreshWeather(lat, lon)
-        }
-
-        weatherDao.getCurrentWeather().map { entity ->
-            if (entity != null) {
-                CurrentWeather(
-                    cityName = entity.cityName,
-                    temperature = entity.temperature,
-                    feelsLike = entity.feelsLike,
-                    condition = entity.condition,
-                    icon = entity.icon,
-                    humidity = entity.humidity,
-                    windSpeed = entity.windSpeed,
-                    pressure = entity.pressure,
-                    visibility = entity.visibility,
-                    uvIndex = entity.uvIndex,
-                    sunrise = entity.sunrise,
-                    sunset = entity.sunset,
-                    timestamp = entity.updatedAt
-                )
-            } else null
-        }.collect { weather ->
-            if (weather != null) {
-                emit(Resource.Success(weather))
-            } else {
-                val refreshResult = refreshWeather(lat, lon)
-                if (refreshResult is Resource.Error) {
-                    emit(Resource.Error(refreshResult.message ?: "Failed to fetch weather"))
+            val refreshResult = refreshWeather(lat, lon)
+            if (refreshResult is Resource.Error) {
+                val cachedWeather = weatherDao.getCurrentWeather().firstOrNull()
+                if (cachedWeather == null) {
+                    emit(Resource.Error(refreshResult.message ?: "Failed to fetch weather data"))
+                    return@flow
                 }
             }
         }
+
+        emitAll(
+            weatherDao.getCurrentWeather().map { entity ->
+                if (entity != null) {
+                    Resource.Success(
+                        CurrentWeather(
+                            cityName = entity.cityName,
+                            temperature = entity.temperature,
+                            feelsLike = entity.feelsLike,
+                            condition = entity.condition,
+                            icon = entity.icon,
+                            humidity = entity.humidity,
+                            windSpeed = entity.windSpeed,
+                            pressure = entity.pressure,
+                            visibility = entity.visibility,
+                            uvIndex = entity.uvIndex,
+                            sunrise = entity.sunrise,
+                            sunset = entity.sunset,
+                            timestamp = entity.updatedAt
+                        )
+                    )
+                } else {
+                    Resource.Error("No weather data available")
+                }
+            }
+        )
     }
 
-    override fun getHourlyForecast(lat: Double, lon: Double): Flow<Resource<List<HourlyForecast>>> {
-        return forecastDao.getForecastByType("HOURLY").map { entities ->
-            Resource.Success(entities.map {
-                HourlyForecast(
-                    timeEpoch = it.timeEpoch,
-                    temp = it.temp,
-                    condition = it.condition,
-                    icon = it.icon,
-                    pop = it.pop
-                )
-            })
+    override fun getHourlyForecast(lat: Double, lon: Double): Flow<Resource<List<HourlyForecast>>> = flow {
+        val metadata = cacheMetadataDao.getCacheMetadata(Constants.KEY_HOURLY_FORECAST)
+        val isCacheExpired = metadata == null || System.currentTimeMillis() > metadata.expiresAt
+
+        if (isCacheExpired) {
+            refreshWeather(lat, lon)
         }
+
+        emitAll(
+            forecastDao.getForecastByType("HOURLY").map { entities ->
+                Resource.Success(entities.map {
+                    HourlyForecast(
+                        timeEpoch = it.timeEpoch,
+                        temp = it.temp,
+                        condition = it.condition,
+                        icon = it.icon,
+                        pop = it.pop
+                    )
+                })
+            }
+        )
     }
 
-    override fun getDailyForecast(lat: Double, lon: Double): Flow<Resource<List<DailyForecast>>> {
-        return forecastDao.getForecastByType("DAILY").map { entities ->
-            Resource.Success(entities.map {
-                DailyForecast(
-                    dayEpoch = it.timeEpoch,
-                    minTemp = it.minTemp,
-                    maxTemp = it.maxTemp,
-                    condition = it.condition,
-                    icon = it.icon,
-                    pop = it.pop
-                )
-            })
+    override fun getDailyForecast(lat: Double, lon: Double): Flow<Resource<List<DailyForecast>>> = flow {
+        val metadata = cacheMetadataDao.getCacheMetadata(Constants.KEY_DAILY_FORECAST)
+        val isCacheExpired = metadata == null || System.currentTimeMillis() > metadata.expiresAt
+
+        if (isCacheExpired) {
+            refreshWeather(lat, lon)
         }
+
+        emitAll(
+            forecastDao.getForecastByType("DAILY").map { entities ->
+                Resource.Success(entities.map {
+                    DailyForecast(
+                        dayEpoch = it.timeEpoch,
+                        minTemp = it.minTemp,
+                        maxTemp = it.maxTemp,
+                        condition = it.condition,
+                        icon = it.icon,
+                        pop = it.pop
+                    )
+                })
+            }
+        )
     }
 
     override suspend fun searchCity(query: String): Resource<List<City>> {
@@ -149,68 +174,90 @@ class WeatherRepositoryImpl @Inject constructor(
             val current = dto.current
             val now = System.currentTimeMillis()
 
-            if (current != null) {
-                val weatherEntity = WeatherEntity(
-                    cityName = dto.timezone,
-                    lat = lat,
-                    lon = lon,
-                    temperature = current.temp,
-                    feelsLike = current.feelsLike,
-                    condition = current.weather.firstOrNull()?.main ?: "Unknown",
-                    icon = current.weather.firstOrNull()?.icon ?: "",
-                    humidity = current.humidity,
-                    windSpeed = current.windSpeed,
-                    pressure = current.pressure,
-                    visibility = current.visibility,
-                    uvIndex = current.uvi,
-                    sunrise = current.sunrise,
-                    sunset = current.sunset,
-                    updatedAt = now
-                )
-                weatherDao.insertWeather(weatherEntity)
-            }
+            db.withTransaction {
+                if (current != null) {
+                    val weatherEntity = WeatherEntity(
+                        cityName = dto.timezone,
+                        lat = lat,
+                        lon = lon,
+                        temperature = current.temp,
+                        feelsLike = current.feelsLike,
+                        condition = current.weather.firstOrNull()?.main ?: "Unknown",
+                        icon = current.weather.firstOrNull()?.icon ?: "",
+                        humidity = current.humidity,
+                        windSpeed = current.windSpeed,
+                        pressure = current.pressure,
+                        visibility = current.visibility,
+                        uvIndex = current.uvi,
+                        sunrise = current.sunrise,
+                        sunset = current.sunset,
+                        updatedAt = now
+                    )
+                    weatherDao.insertWeather(weatherEntity)
+                }
 
-            // Save Cache Metadata (15 Min TTL)
-            cacheMetadataDao.insertCacheMetadata(
-                CacheMetadataEntity(
-                    cacheKey = "CURRENT_WEATHER",
-                    ttlMs = Constants.CURRENT_WEATHER_TTL_MS,
-                    updatedAt = now,
-                    expiresAt = now + Constants.CURRENT_WEATHER_TTL_MS
+                // Save Cache Metadata for Current Weather (15 Min TTL)
+                cacheMetadataDao.insertCacheMetadata(
+                    CacheMetadataEntity(
+                        cacheKey = Constants.KEY_CURRENT_WEATHER,
+                        ttlMs = Constants.CURRENT_WEATHER_TTL_MS,
+                        updatedAt = now,
+                        expiresAt = now + Constants.CURRENT_WEATHER_TTL_MS
+                    )
                 )
-            )
 
-            // Insert Hourly
-            val hourlyEntities = dto.hourly.take(24).map {
-                ForecastEntity(
-                    type = "HOURLY",
-                    timeEpoch = it.dt,
-                    temp = it.temp,
-                    minTemp = 0.0,
-                    maxTemp = 0.0,
-                    condition = it.weather.firstOrNull()?.main ?: "",
-                    icon = it.weather.firstOrNull()?.icon ?: "",
-                    pop = it.pop
+                // Save Cache Metadata for Hourly Forecast (1 Hour TTL)
+                cacheMetadataDao.insertCacheMetadata(
+                    CacheMetadataEntity(
+                        cacheKey = Constants.KEY_HOURLY_FORECAST,
+                        ttlMs = Constants.HOURLY_FORECAST_TTL_MS,
+                        updatedAt = now,
+                        expiresAt = now + Constants.HOURLY_FORECAST_TTL_MS
+                    )
                 )
-            }
-            forecastDao.clearForecastByType("HOURLY")
-            forecastDao.insertForecasts(hourlyEntities)
 
-            // Insert Daily
-            val dailyEntities = dto.daily.take(7).map {
-                ForecastEntity(
-                    type = "DAILY",
-                    timeEpoch = it.dt,
-                    temp = (it.temp.min + it.temp.max) / 2,
-                    minTemp = it.temp.min,
-                    maxTemp = it.temp.max,
-                    condition = it.weather.firstOrNull()?.main ?: "",
-                    icon = it.weather.firstOrNull()?.icon ?: "",
-                    pop = it.pop
+                // Save Cache Metadata for Daily Forecast (3 Hours TTL)
+                cacheMetadataDao.insertCacheMetadata(
+                    CacheMetadataEntity(
+                        cacheKey = Constants.KEY_DAILY_FORECAST,
+                        ttlMs = Constants.DAILY_FORECAST_TTL_MS,
+                        updatedAt = now,
+                        expiresAt = now + Constants.DAILY_FORECAST_TTL_MS
+                    )
                 )
+
+                // Insert Hourly
+                val hourlyEntities = dto.hourly.take(24).map {
+                    ForecastEntity(
+                        type = "HOURLY",
+                        timeEpoch = it.dt,
+                        temp = it.temp,
+                        minTemp = 0.0,
+                        maxTemp = 0.0,
+                        condition = it.weather.firstOrNull()?.main ?: "",
+                        icon = it.weather.firstOrNull()?.icon ?: "",
+                        pop = it.pop
+                    )
+                }
+                forecastDao.clearForecastByType("HOURLY")
+                forecastDao.insertForecasts(hourlyEntities)
+
+                // Insert Daily
+                val dailyEntities = dto.daily.take(7).map {
+                    ForecastEntity(
+                        type = "DAILY",
+                        timeEpoch = it.dt,
+                        temp = (it.temp.min + it.temp.max) / 2,
+                        minTemp = it.temp.min,
+                        maxTemp = it.temp.max,
+                        condition = it.weather.firstOrNull()?.main ?: "",
+                        icon = it.weather.firstOrNull()?.icon ?: "",
+                        pop = it.pop
+                    )
+                }
+                forecastDao.clearForecastByType("DAILY")
+                forecastDao.insertForecasts(dailyEntities)
             }
-            forecastDao.clearForecastByType("DAILY")
-            forecastDao.insertForecasts(dailyEntities)
 
             Resource.Success(Unit)
         } catch (e: Exception) {

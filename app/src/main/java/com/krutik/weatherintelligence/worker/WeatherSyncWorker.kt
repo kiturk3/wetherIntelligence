@@ -17,10 +17,13 @@ class WeatherSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val lat = inputData.getDouble("lat", 0.0)
-        val lon = inputData.getDouble("lon", 0.0)
+        val lat = inputData.getDouble("lat", 28.6139)
+        val lon = inputData.getDouble("lon", 77.2090)
 
-        return when (repository.refreshWeather(lat, lon)) {
+        val targetLat = if (lat == 0.0) 28.6139 else lat
+        val targetLon = if (lon == 0.0) 77.2090 else lon
+
+        return when (repository.refreshWeather(targetLat, targetLon)) {
             is Resource.Success -> Result.success()
             is Resource.Error -> Result.retry()
             is Resource.Loading -> Result.retry()

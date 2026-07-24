@@ -10,6 +10,7 @@ import com.krutik.weatherintelligence.domain.usecase.GetCurrentWeatherUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetDailyForecastUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetHourlyForecastUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +22,8 @@ data class HomeUiState(
     val currentWeather: CurrentWeather? = null,
     val hourlyForecast: List<HourlyForecast> = emptyList(),
     val dailyForecast: List<DailyForecast> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val isOffline: Boolean = false
 )
 
 @HiltViewModel
@@ -33,6 +35,10 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private var weatherJob: Job? = null
+    private var hourlyJob: Job? = null
+    private var dailyJob: Job? = null
 
     init {
         onEvent(HomeEvent.RefreshWeather(28.6139, 77.2090)) // Default location
@@ -46,19 +52,41 @@ class HomeViewModel @Inject constructor(
     }
 
     fun fetchWeatherData(lat: Double, lon: Double, forceRefresh: Boolean = false) {
-        viewModelScope.launch {
+        weatherJob?.cancel()
+        hourlyJob?.cancel()
+        dailyJob?.cancel()
+
+        weatherJob = viewModelScope.launch {
             getCurrentWeatherUseCase(lat, lon, forceRefresh).collect { result ->
                 when (result) {
                     is Resource.Loading -> _uiState.value = _uiState.value.copy(isLoading = true)
                     is Resource.Success -> _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         currentWeather = result.data,
-                        error = null
+                        error = null,
+                        isOffline = false
                     )
                     is Resource.Error -> _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = result.message
+                        error = if (_uiState.value.currentWeather == null) result.message else null,
+                        isOffline = true
                     )
+                }
+            }
+        }
+
+        hourlyJob = viewModelScope.launch {
+            getHourlyForecastUseCase(lat, lon).collect { result ->
+                if (result is Resource.Success && result.data != null) {
+                    _uiState.value = _uiState.value.copy(hourlyForecast = result.data)
+                }
+            }
+        }
+
+        dailyJob = viewModelScope.launch {
+            getDailyForecastUseCase(lat, lon).collect { result ->
+                if (result is Resource.Success && result.data != null) {
+                    _uiState.value = _uiState.value.copy(dailyForecast = result.data)
                 }
             }
         }
