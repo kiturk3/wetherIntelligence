@@ -1,0 +1,67 @@
+name: Android Release
+
+on:
+
+  push:
+    branches:
+      - main
+
+jobs:
+
+  release:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: chmod +x gradlew
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      ###################################################
+      # Decode Keystore
+      ###################################################
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+
+      ###################################################
+      # Build Signed APK
+      ###################################################
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      ###################################################
+      # Upload APK
+      ###################################################
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeatherIntelligence-release
+          path: app/build/outputs/apk/release/*.apk
+
+      ###################################################
+      # GitHub Release
+      ###################################################
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/*.apk
