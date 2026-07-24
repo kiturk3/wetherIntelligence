@@ -16,12 +16,19 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import com.krutik.weatherintelligence.core.common.Resource
+import com.krutik.weatherintelligence.domain.model.CurrentWeather
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+
+import androidx.room.withTransaction
+import io.mockk.mockkStatic
+import io.mockk.slot
 
 class WeatherRepositoryImplTest {
 
@@ -36,6 +43,10 @@ class WeatherRepositoryImplTest {
 
     @Before
     fun setUp() {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val transactionLambda = slot<suspend () -> Any?>()
+        coEvery { db.withTransaction(capture(transactionLambda)) } coAnswers { transactionLambda.captured.invoke() }
+
         every { db.weatherDao() } returns weatherDao
         every { db.forecastDao() } returns forecastDao
         every { db.cityDao() } returns cityDao
@@ -86,7 +97,9 @@ class WeatherRepositoryImplTest {
         coEvery { remoteDataSource.getForecast(any(), any(), any(), any()) } returns mockForecastDto
 
         // When
-        val result = repository.getCurrentWeather(51.5, -0.1, forceRefresh = false).first()
+        val result = repository.getCurrentWeather(51.5, -0.1, forceRefresh = false)
+            .filterIsInstance<Resource.Success<CurrentWeather>>()
+            .first()
 
         // Then
         coVerify { remoteDataSource.getCurrentWeather(51.5, -0.1, "metric", any()) }

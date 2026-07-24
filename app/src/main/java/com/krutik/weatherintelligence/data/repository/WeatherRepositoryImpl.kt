@@ -3,6 +3,7 @@ package com.krutik.weatherintelligence.data.repository
 import com.krutik.weatherintelligence.BuildConfig
 import com.krutik.weatherintelligence.core.common.Constants
 import com.krutik.weatherintelligence.core.common.Resource
+import androidx.room.withTransaction
 import com.krutik.weatherintelligence.data.local.WeatherDatabase
 import com.krutik.weatherintelligence.data.local.entity.CacheMetadataEntity
 import com.krutik.weatherintelligence.data.local.entity.CityEntity
@@ -170,18 +171,6 @@ class WeatherRepositoryImpl @Inject constructor(
                 sunset = sys?.sunset ?: 0L,
                 updatedAt = now
             )
-            weatherDao.insertWeather(weatherEntity)
-
-            // Save Cache Metadata (15 Min TTL)
-            cacheMetadataDao.insertCacheMetadata(
-                CacheMetadataEntity(
-                    cacheKey = "CURRENT_WEATHER",
-                    ttlMs = Constants.CURRENT_WEATHER_TTL_MS,
-                    updatedAt = now,
-                    expiresAt = now + Constants.CURRENT_WEATHER_TTL_MS
-                )
-            )
-
             // Process Forecast Items
             val forecastItems = forecastDto.list
 
@@ -199,8 +188,6 @@ class WeatherRepositoryImpl @Inject constructor(
                     pop = item.pop
                 )
             }
-            forecastDao.clearForecastByType("HOURLY")
-            forecastDao.insertForecasts(hourlyEntities)
 
             // Daily (Group by 24h day intervals)
             val dailyEntities = forecastItems.chunked(8).take(5).map { dayChunk ->
@@ -220,8 +207,26 @@ class WeatherRepositoryImpl @Inject constructor(
                     pop = dayChunk.maxOf { it.pop }
                 )
             }
-            forecastDao.clearForecastByType("DAILY")
-            forecastDao.insertForecasts(dailyEntities)
+
+            db.withTransaction {
+                weatherDao.insertWeather(weatherEntity)
+
+                // Save Cache Metadata (15 Min TTL)
+                cacheMetadataDao.insertCacheMetadata(
+                    CacheMetadataEntity(
+                        cacheKey = "CURRENT_WEATHER",
+                        ttlMs = Constants.CURRENT_WEATHER_TTL_MS,
+                        updatedAt = now,
+                        expiresAt = now + Constants.CURRENT_WEATHER_TTL_MS
+                    )
+                )
+
+                forecastDao.clearForecastByType("HOURLY")
+                forecastDao.insertForecasts(hourlyEntities)
+
+                forecastDao.clearForecastByType("DAILY")
+                forecastDao.insertForecasts(dailyEntities)
+            }
 
             Resource.Success(Unit)
         } catch (e: Exception) {

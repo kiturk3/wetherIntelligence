@@ -115,16 +115,19 @@ fun HomeScreen(
                     }
                 }
 
-                if (state.isLoading && state.currentWeather == null) {
+                val currentWeather = state.currentWeather
+                val errorMessage = state.error
+
+                if (state.isLoading && currentWeather == null) {
                     LoadingView()
-                } else if (state.error != null && state.currentWeather == null) {
+                } else if (errorMessage != null && currentWeather == null) {
                     ErrorView(
-                        message = state.error!!,
+                        message = errorMessage,
                         onRetry = { viewModel.onEvent(HomeEvent.FetchCurrentLocationWeather) }
                     )
-                } else if (state.currentWeather != null) {
+                } else if (currentWeather != null) {
                     // Hero Weather Card
-                    WeatherCard(weather = state.currentWeather!!)
+                    WeatherCard(weather = currentWeather)
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -140,7 +143,7 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Weather Metrics Grid (Humidity, Pressure, Wind, UV Index, Sunrise/Sunset)
-                    WeatherDetailsGrid(weather = state.currentWeather!!)
+                    WeatherDetailsGrid(weather = currentWeather)
 
                     Spacer(modifier = Modifier.height(8.dp))
 
