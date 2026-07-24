@@ -1,11 +1,15 @@
 package com.krutik.weatherintelligence.presentation.home
 
+import android.location.Location
 import app.cash.turbine.test
+import com.krutik.weatherintelligence.core.location.LocationTracker
 import com.krutik.weatherintelligence.domain.usecase.GetCurrentWeatherUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetDailyForecastUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetHourlyForecastUseCase
 import com.krutik.weatherintelligence.fakes.FakeWeatherRepository
 import com.krutik.weatherintelligence.util.MainCoroutineRule
+import io.mockk.coEvery
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -22,10 +26,13 @@ class HomeViewModelTest {
     val mainCoroutineRule = MainCoroutineRule()
 
     private lateinit var repository: FakeWeatherRepository
+    private val locationTracker: LocationTracker = mockk(relaxed = true)
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setUp() {
+        coEvery { locationTracker.getCurrentLocation() } returns null
+
         repository = FakeWeatherRepository()
         val getCurrentWeatherUseCase = GetCurrentWeatherUseCase(repository)
         val getHourlyForecastUseCase = GetHourlyForecastUseCase(repository)
@@ -34,7 +41,8 @@ class HomeViewModelTest {
         viewModel = HomeViewModel(
             getCurrentWeatherUseCase,
             getHourlyForecastUseCase,
-            getDailyForecastUseCase
+            getDailyForecastUseCase,
+            locationTracker
         )
     }
 

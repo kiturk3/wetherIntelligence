@@ -10,6 +10,9 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
+import com.krutik.weatherintelligence.domain.usecase.GetSettingsUseCase
+import com.krutik.weatherintelligence.domain.usecase.UpdateSettingsUseCase
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
 
@@ -22,7 +25,9 @@ class SettingsViewModelTest {
     @Before
     fun setUp() {
         repository = FakeSettingsRepository()
-        viewModel = SettingsViewModel(repository)
+        val getSettingsUseCase = GetSettingsUseCase(repository)
+        val updateSettingsUseCase = UpdateSettingsUseCase(repository)
+        viewModel = SettingsViewModel(getSettingsUseCase, updateSettingsUseCase)
     }
 
     @Test

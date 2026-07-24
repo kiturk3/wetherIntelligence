@@ -8,19 +8,27 @@ import com.krutik.weatherintelligence.data.local.dao.WeatherDao
 import com.krutik.weatherintelligence.data.local.entity.CacheMetadataEntity
 import com.krutik.weatherintelligence.data.local.entity.WeatherEntity
 import com.krutik.weatherintelligence.data.remote.datasource.RemoteDataSource
-import com.krutik.weatherintelligence.data.remote.dto.CurrentDataDto
+import com.krutik.weatherintelligence.data.remote.dto.CurrentWeatherResponseDto
+import com.krutik.weatherintelligence.data.remote.dto.ForecastResponseDto
+import com.krutik.weatherintelligence.data.remote.dto.MainDataDto
 import com.krutik.weatherintelligence.data.remote.dto.WeatherConditionDto
-import com.krutik.weatherintelligence.data.remote.dto.WeatherResponseDto
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import com.krutik.weatherintelligence.core.common.Resource
+import com.krutik.weatherintelligence.domain.model.CurrentWeather
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+
+import androidx.room.withTransaction
+import io.mockk.mockkStatic
+import io.mockk.slot
 
 class WeatherRepositoryImplTest {
 
@@ -35,6 +43,10 @@ class WeatherRepositoryImplTest {
 
     @Before
     fun setUp() {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val transactionLambda = slot<suspend () -> Any?>()
+        coEvery { db.withTransaction(capture(transactionLambda)) } coAnswers { transactionLambda.captured.invoke() }
+
         every { db.weatherDao() } returns weatherDao
         every { db.forecastDao() } returns forecastDao
         every { db.cityDao() } returns cityDao
@@ -44,13 +56,13 @@ class WeatherRepositoryImplTest {
     }
 
     @Test
-    fun `getCurrentWeather with expired cache should trigger remote fetch`() = runTest {
+    fun `getCurrentWeather with expired cache should trigger remote fetch for current weather and forecast`() = runTest {
         // Given expired cache metadata
         coEvery { cacheMetadataDao.getCacheMetadata("CURRENT_WEATHER") } returns CacheMetadataEntity(
             cacheKey = "CURRENT_WEATHER",
             ttlMs = 900000L,
             updatedAt = 1000L,
-            expiresAt = 2000L // Past timestamp
+            expiresAt = 2000L
         )
 
         val mockWeatherEntity = WeatherEntity(
@@ -73,27 +85,25 @@ class WeatherRepositoryImplTest {
         )
         every { weatherDao.getCurrentWeather() } returns flowOf(mockWeatherEntity)
 
-        val mockDto = WeatherResponseDto(
-            lat = 51.5,
-            lon = -0.1,
-            timezone = "Europe/London",
-            current = CurrentDataDto(
-                dt = System.currentTimeMillis() / 1000,
-                temp = 18.0,
-                feelsLike = 17.0,
-                pressure = 1015,
-                humidity = 70,
-                windSpeed = 5.0,
-                weather = listOf(WeatherConditionDto(802, "Clouds", "scattered clouds", "03d"))
-            )
+        val mockCurrentDto = CurrentWeatherResponseDto(
+            dt = System.currentTimeMillis() / 1000,
+            name = "London",
+            main = MainDataDto(temp = 18.0, feelsLike = 17.0, pressure = 1015, humidity = 70),
+            weather = listOf(WeatherConditionDto(802, "Clouds", "scattered clouds", "03d"))
         )
-        coEvery { remoteDataSource.getWeatherOneCall(any(), any(), any(), any()) } returns mockDto
+        val mockForecastDto = ForecastResponseDto(list = emptyList())
+
+        coEvery { remoteDataSource.getCurrentWeather(any(), any(), any(), any()) } returns mockCurrentDto
+        coEvery { remoteDataSource.getForecast(any(), any(), any(), any()) } returns mockForecastDto
 
         // When
-        val result = repository.getCurrentWeather(51.5, -0.1, forceRefresh = false).first()
+        val result = repository.getCurrentWeather(51.5, -0.1, forceRefresh = false)
+            .filterIsInstance<Resource.Success<CurrentWeather>>()
+            .first()
 
         // Then
-        coVerify { remoteDataSource.getWeatherOneCall(51.5, -0.1, "metric", any()) }
+        coVerify { remoteDataSource.getCurrentWeather(51.5, -0.1, "metric", any()) }
+        coVerify { remoteDataSource.getForecast(51.5, -0.1, "metric", any()) }
         assertEquals("London", result.data?.cityName)
     }
 }
