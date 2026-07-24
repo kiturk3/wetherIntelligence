@@ -33,10 +33,25 @@ class SyncManager @Inject constructor(
             )
             .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        val notificationRequest = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                WorkRequest.MIN_BACKOFF_MILLIS,
+                TimeUnit.MILLISECONDS
+            )
+            .build()
+
+        val workManager = WorkManager.getInstance(context)
+        workManager.enqueueUniquePeriodicWork(
             Constants.WEATHER_SYNC_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             syncRequest
+        )
+        workManager.enqueueUniquePeriodicWork(
+            "weather_notification_work",
+            ExistingPeriodicWorkPolicy.KEEP,
+            notificationRequest
         )
     }
 }

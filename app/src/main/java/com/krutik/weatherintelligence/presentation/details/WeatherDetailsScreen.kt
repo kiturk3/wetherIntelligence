@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,27 +26,36 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.krutik.weatherintelligence.presentation.components.GradientBackground
+import com.krutik.weatherintelligence.presentation.components.LoadingView
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeatherDetailsScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    viewModel: WeatherDetailsViewModel = hiltViewModel()
 ) {
-    GradientBackground(condition = "Clear") {
+    val state by viewModel.uiState.collectAsState()
+    val weather = state.weather
+    val condition = weather?.condition ?: "Clear"
+
+    GradientBackground(condition = condition) {
         Column(modifier = Modifier.fillMaxSize()) {
             TopAppBar(
-                title = { Text("Weather Details & Metrics", color = Color.White) },
+                title = { Text(if (weather != null) "Metrics • ${weather.cityName}" else "Weather Details & Metrics", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -54,52 +64,88 @@ fun WeatherDetailsScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Air Quality Card
-                MetricCard(
-                    title = "Air Quality Index (AQI)",
-                    value = "Good (42)",
-                    icon = Icons.Rounded.Air,
-                    progress = 0.25f,
-                    progressColor = Color(0xFF4CAF50),
-                    description = "Air quality is satisfactory and poses little or no risk."
-                )
+            if (state.isLoading && weather == null) {
+                LoadingView(message = "Loading detailed metrics...")
+            } else if (weather != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val uvVal = weather.uvIndex
+                    val uvProgress = (uvVal / 11.0).toFloat().coerceIn(0f, 1f)
+                    val uvCategory = when {
+                        uvVal <= 2.0 -> "Low"
+                        uvVal <= 5.0 -> "Moderate"
+                        uvVal <= 7.0 -> "High"
+                        uvVal <= 10.0 -> "Very High"
+                        else -> "Extreme"
+                    }
+                    val uvDesc = when {
+                        uvVal <= 2.0 -> "No protection needed. You can safely stay outside."
+                        uvVal <= 5.0 -> "Wear sunglasses and SPF 30+ sunscreen."
+                        else -> "Seek shade during midday hours; wear hat and UV sunglasses."
+                    }
 
-                // UV Index Gauge Card
-                MetricCard(
-                    title = "UV Index Gauge",
-                    value = "5 - Moderate",
-                    icon = Icons.Rounded.WbSunny,
-                    progress = 0.5f,
-                    progressColor = Color(0xFFFFB300),
-                    description = "Wear sunglasses on bright days; use SPF 30+ sunscreen."
-                )
+                    // UV Index Gauge Card
+                    MetricCard(
+                        title = "UV Index Gauge",
+                        value = "${uvVal.roundToInt()} - $uvCategory",
+                        icon = Icons.Rounded.WbSunny,
+                        progress = uvProgress,
+                        progressColor = Color(0xFFFFB300),
+                        description = uvDesc
+                    )
 
-                // Wind Speed & Direction Card
-                MetricCard(
-                    title = "Wind & Gusts",
-                    value = "14 km/h • Direction: NW",
-                    icon = Icons.Rounded.Explore,
-                    progress = 0.35f,
-                    progressColor = Color(0xFF29B6F6),
-                    description = "Gentle breeze moving north-west with gusts up to 22 km/h."
-                )
+                    // Wind Speed Card
+                    val windKmh = (weather.windSpeed * 3.6).roundToInt()
+                    val windProgress = (windKmh / 60f).coerceIn(0f, 1f)
+                    MetricCard(
+                        title = "Wind Speed & Gusts",
+                        value = "$windKmh km/h (${weather.windSpeed} m/s)",
+                        icon = Icons.Rounded.Explore,
+                        progress = windProgress,
+                        progressColor = Color(0xFF29B6F6),
+                        description = "Current wind speed recorded for ${weather.cityName}."
+                    )
 
-                // Barometric Pressure Card
-                MetricCard(
-                    title = "Barometric Pressure",
-                    value = "1013 hPa",
-                    icon = Icons.Rounded.Compress,
-                    progress = 0.65f,
-                    progressColor = Color(0xFFAB47BC),
-                    description = "Standard atmospheric sea-level pressure."
-                )
+                    // Humidity Card
+                    val humProgress = (weather.humidity / 100f).coerceIn(0f, 1f)
+                    val dewPoint = (weather.temperature - ((100 - weather.humidity) / 5)).roundToInt()
+                    MetricCard(
+                        title = "Humidity & Dew Point",
+                        value = "${weather.humidity}% • Dew Point ~${dewPoint}°C",
+                        icon = Icons.Rounded.WaterDrop,
+                        progress = humProgress,
+                        progressColor = Color(0xFF42A5F5),
+                        description = if (weather.humidity > 70) "High humidity makes it feel warmer." else "Comfortable relative humidity."
+                    )
+
+                    // Barometric Pressure Card
+                    val pressProgress = ((weather.pressure - 950) / 100f).coerceIn(0f, 1f)
+                    MetricCard(
+                        title = "Barometric Pressure",
+                        value = "${weather.pressure} hPa",
+                        icon = Icons.Rounded.Compress,
+                        progress = pressProgress,
+                        progressColor = Color(0xFFAB47BC),
+                        description = if (weather.pressure >= 1013) "High pressure brings clear skies." else "Low pressure indicates possible clouds/precipitation."
+                    )
+
+                    // Visibility Card
+                    val visKm = weather.visibility / 1000f
+                    val visProgress = (visKm / 10f).coerceIn(0f, 1f)
+                    MetricCard(
+                        title = "Atmospheric Visibility",
+                        value = "${"%.1f".format(visKm)} km",
+                        icon = Icons.Rounded.Air,
+                        progress = visProgress,
+                        progressColor = Color(0xFF4CAF50),
+                        description = if (visKm >= 10f) "Clear visual distance." else "Reduced visibility due to haze/clouds."
+                    )
+                }
             }
         }
     }

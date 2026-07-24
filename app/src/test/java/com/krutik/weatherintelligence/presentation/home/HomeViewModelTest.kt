@@ -8,6 +8,7 @@ import com.krutik.weatherintelligence.domain.usecase.GetDailyForecastUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetHourlyForecastUseCase
 import com.krutik.weatherintelligence.fakes.FakeWeatherRepository
 import com.krutik.weatherintelligence.util.MainCoroutineRule
+import com.krutik.weatherintelligence.worker.SyncManager
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,6 +28,7 @@ class HomeViewModelTest {
 
     private lateinit var repository: FakeWeatherRepository
     private val locationTracker: LocationTracker = mockk(relaxed = true)
+    private val syncManager: SyncManager = mockk(relaxed = true)
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -42,7 +44,8 @@ class HomeViewModelTest {
             getCurrentWeatherUseCase,
             getHourlyForecastUseCase,
             getDailyForecastUseCase,
-            locationTracker
+            locationTracker,
+            syncManager
         )
     }
 

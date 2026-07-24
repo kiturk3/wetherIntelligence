@@ -26,15 +26,33 @@ fun WeatherNavGraph(
                 }
             })
         }
-        composable(Screen.Home.route) {
+        composable(Screen.Home.route) { backStackEntry ->
+            val selectedLat = backStackEntry.savedStateHandle.get<Double>("selected_lat")
+            val selectedLon = backStackEntry.savedStateHandle.get<Double>("selected_lon")
+            val selectedName = backStackEntry.savedStateHandle.get<String>("selected_name")
+
             HomeScreen(
                 onNavigateToSearch = { navController.navigate(Screen.Search.route) },
                 onNavigateToDetails = { navController.navigate(Screen.Details.route) },
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                selectedCity = if (selectedLat != null && selectedLon != null) Triple(selectedLat, selectedLon, selectedName ?: "") else null,
+                onCityConsumed = {
+                    backStackEntry.savedStateHandle.remove<Double>("selected_lat")
+                    backStackEntry.savedStateHandle.remove<Double>("selected_lon")
+                    backStackEntry.savedStateHandle.remove<String>("selected_name")
+                }
             )
         }
         composable(Screen.Search.route) {
-            SearchScreen(onNavigateBack = { navController.popBackStack() })
+            SearchScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onCitySelected = { lat, lon, name ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set("selected_lat", lat)
+                    navController.previousBackStackEntry?.savedStateHandle?.set("selected_lon", lon)
+                    navController.previousBackStackEntry?.savedStateHandle?.set("selected_name", name)
+                    navController.popBackStack()
+                }
+            )
         }
         composable(Screen.Details.route) {
             WeatherDetailsScreen(onNavigateBack = { navController.popBackStack() })

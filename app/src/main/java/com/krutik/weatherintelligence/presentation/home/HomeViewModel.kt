@@ -31,11 +31,10 @@ class HomeViewModel @Inject constructor(
     private val getCurrentWeatherUseCase: GetCurrentWeatherUseCase,
     private val getHourlyForecastUseCase: GetHourlyForecastUseCase,
     private val getDailyForecastUseCase: GetDailyForecastUseCase,
-    private val locationTracker: LocationTracker
+    private val locationTracker: LocationTracker,
+    private val syncManager: SyncManager
 ) : ViewModel() {
 
-    @Inject
-    lateinit var syncManager: SyncManager
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 

@@ -1,6 +1,9 @@
 package com.krutik.weatherintelligence.presentation.search
 
 import app.cash.turbine.test
+import com.krutik.weatherintelligence.domain.usecase.DeleteFavoriteCityUseCase
+import com.krutik.weatherintelligence.domain.usecase.GetFavoriteCitiesUseCase
+import com.krutik.weatherintelligence.domain.usecase.SaveFavoriteCityUseCase
 import com.krutik.weatherintelligence.domain.usecase.SearchCityUseCase
 import com.krutik.weatherintelligence.fakes.FakeWeatherRepository
 import com.krutik.weatherintelligence.util.MainCoroutineRule
@@ -25,7 +28,16 @@ class SearchViewModelTest {
     fun setUp() {
         repository = FakeWeatherRepository()
         val searchCityUseCase = SearchCityUseCase(repository)
-        viewModel = SearchViewModel(searchCityUseCase)
+        val getFavoriteCitiesUseCase = GetFavoriteCitiesUseCase(repository)
+        val saveFavoriteCityUseCase = SaveFavoriteCityUseCase(repository)
+        val deleteFavoriteCityUseCase = DeleteFavoriteCityUseCase(repository)
+
+        viewModel = SearchViewModel(
+            searchCityUseCase = searchCityUseCase,
+            getFavoriteCitiesUseCase = getFavoriteCitiesUseCase,
+            saveFavoriteCityUseCase = saveFavoriteCityUseCase,
+            deleteFavoriteCityUseCase = deleteFavoriteCityUseCase
+        )
     }
 
     @Test

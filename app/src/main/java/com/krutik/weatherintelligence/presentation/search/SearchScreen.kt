@@ -49,6 +49,7 @@ import com.krutik.weatherintelligence.presentation.components.LoadingView
 @Composable
 fun SearchScreen(
     onNavigateBack: () -> Unit,
+    onCitySelected: (Double, Double, String) -> Unit = { _, _, _ -> },
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -120,12 +121,35 @@ fun SearchScreen(
 
                 if (state.isLoading) {
                     LoadingView(message = "Searching cities...")
+                } else if (state.query.isEmpty()) {
+                    if (state.favoriteCities.isNotEmpty()) {
+                        Text(
+                            text = "Favorite Cities",
+                            style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(state.favoriteCities) { city ->
+                                CitySearchResultCard(
+                                    city = city,
+                                    onFavoriteToggle = { viewModel.toggleFavorite(it) },
+                                    onCitySelected = { onCitySelected(it.lat, it.lon, it.name) }
+                                )
+                            }
+                        }
+                    } else {
+                        EmptyView(title = "Search Any Location", subtitle = "Search for a city or pick a popular location above")
+                    }
                 } else if (state.cities.isEmpty() && state.query.length >= 3) {
                     EmptyView(title = "No Cities Found", subtitle = "No matching city found for '${state.query}'")
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(state.cities) { city ->
-                            CitySearchResultCard(city = city, onFavoriteToggle = {})
+                            CitySearchResultCard(
+                                city = city,
+                                onFavoriteToggle = { viewModel.toggleFavorite(it) },
+                                onCitySelected = { onCitySelected(it.lat, it.lon, it.name) }
+                            )
                         }
                     }
                 }
@@ -137,10 +161,13 @@ fun SearchScreen(
 @Composable
 fun CitySearchResultCard(
     city: City,
-    onFavoriteToggle: (City) -> Unit
+    onFavoriteToggle: (City) -> Unit,
+    onCitySelected: (City) -> Unit = {}
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCitySelected(city) },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.2f)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))

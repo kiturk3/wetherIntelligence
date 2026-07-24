@@ -48,6 +48,8 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToDetails: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    selectedCity: Triple<Double, Double, String>? = null,
+    onCityConsumed: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -58,18 +60,23 @@ fun HomeScreen(
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
+        if (granted && selectedCity == null) {
             viewModel.onEvent(HomeEvent.FetchCurrentLocationWeather)
         }
     }
 
-    LaunchedEffect(Unit) {
-        locationPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
+    LaunchedEffect(selectedCity) {
+        if (selectedCity != null) {
+            viewModel.onEvent(HomeEvent.SelectCity(selectedCity.first, selectedCity.second, selectedCity.third))
+            onCityConsumed()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
             )
-        )
+        }
     }
 
     GradientBackground(condition = condition) {
