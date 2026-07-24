@@ -10,6 +10,7 @@ import com.krutik.weatherintelligence.domain.model.HourlyForecast
 import com.krutik.weatherintelligence.domain.usecase.GetCurrentWeatherUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetDailyForecastUseCase
 import com.krutik.weatherintelligence.domain.usecase.GetHourlyForecastUseCase
+import com.krutik.weatherintelligence.worker.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,11 +34,14 @@ class HomeViewModel @Inject constructor(
     private val locationTracker: LocationTracker
 ) : ViewModel() {
 
+    @Inject
+    lateinit var syncManager: SyncManager
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
         onEvent(HomeEvent.FetchCurrentLocationWeather)
+        syncManager.schedulePeriodicSync()
     }
 
     fun onEvent(event: HomeEvent) {
